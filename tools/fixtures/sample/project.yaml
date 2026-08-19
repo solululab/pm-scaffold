@@ -1,0 +1,21 @@
+name: 範例電商網站
+client: 範例客戶股份有限公司
+started: 2026-08-01
+milestones:
+  - id: M1
+    title: 前台頁面
+    due: 2026-09-15
+  - id: M2
+    title: 金流與結帳
+    due: 2026-10-15
+people:
+  - name: 內部人員甲
+    role: engineer
+  - name: 內部人員乙
+    role: pm
+engineering_repos:
+  - path: /path/to/theme-repo
+    last_synced: ""
+dashboard:
+  title: 範例電商網站 建置進度
+  url: ""
