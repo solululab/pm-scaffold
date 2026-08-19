@@ -213,5 +213,43 @@ class TestValidate(unittest.TestCase):
         self.assertIn("不是有效日期", errors[0])
 
 
+class TestRender(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        project, data, errors = bd.load_all(os.path.join(FIXTURES, "sample"))
+        assert not errors
+        cls.html = bd.render_html(project, data["work"])
+
+    def test_five_sections_present(self):
+        for marker in ("整體進度", "里程碑", "待客戶事項", "進行中", "最近完成", "全部工項"):
+            self.assertIn(marker, self.html)
+
+    def test_visible_content(self):
+        self.assertIn("首頁版面", self.html)
+        self.assertIn("待客戶提供色票對照表 Excel", self.html)
+        self.assertIn("範例電商網站 建置進度", self.html)
+        self.assertIn("2026-08-18", self.html)
+
+    def test_whitelist_blocks_internal_fields(self):
+        self.assertNotIn("內部人員甲", self.html)
+        self.assertNotIn("內部人員乙", self.html)
+        self.assertNotIn("42d", self.html)
+        self.assertNotIn("內部 CI 修復", self.html)
+        self.assertNotIn("隱藏完成項目", self.html)
+        self.assertNotIn("這是內部秘密", self.html)
+        self.assertNotIn("規格書 §", self.html)
+
+    def test_progress_counts_visible_mvp_only(self):
+        self.assertIn("1 / 3", self.html)
+
+    def test_html_escaped(self):
+        project = {"name": "x", "client": "c", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}],
+                   "dashboard": {"title": "<script>alert(1)</script>"}}
+        out = bd.render_html(project, [])
+        self.assertNotIn("<script>alert(1)</script>", out)
+        self.assertIn("&lt;script&gt;", out)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -325,3 +325,129 @@ def validate(project, data):
             errors.append("%s: type 值非法：%r" % (path, ty))
 
     return errors
+
+
+# ---------- 渲染（白名單輸出） ----------
+
+STATUS_LABEL = {"todo": "待辦", "doing": "進行中", "blocked": "卡關",
+                "review": "驗收中", "done": "完成"}
+
+
+def _esc(s):
+    return html.escape(str(s or ""), quote=True)
+
+
+def _visible(works):
+    """儀表板收錄範圍：client_visible=true 且非 dropped。"""
+    return [w for w in works
+            if str(w["meta"].get("client_visible", "")).strip() == "true"
+            and w["meta"].get("status") != "dropped"]
+
+
+def _bar(done, total):
+    pct = int(round(done * 100.0 / total)) if total else 0
+    return ('<div class="bar"><div class="fill" style="width:%d%%"></div></div>'
+            '<span class="pct">%d / %d</span>' % (pct, done, total))
+
+
+def render_html(project, works):
+    vis = _visible(works)
+    dash = project.get("dashboard") or {}
+    title = str(dash.get("title") or "").strip() or "%s 專案進度" % project.get("name", "")
+    updated = max((w["meta"].get("updated", "") for w in vis), default="—")
+
+    mvp = [w for w in vis if w["meta"].get("priority") == "mvp"]
+    mvp_done = [w for w in mvp if w["meta"].get("status") == "done"]
+
+    parts = []
+    parts.append("<header><h1>%s</h1>" % _esc(title))
+    parts.append('<p class="meta">最後更新：%s</p>' % _esc(updated))
+    parts.append('<section class="overall"><h2>整體進度（MVP）</h2>%s</section></header>'
+                 % _bar(len(mvp_done), len(mvp)))
+
+    parts.append("<section><h2>里程碑</h2>")
+    for m in project.get("milestones") or []:
+        mid = m.get("id", "")
+        mitems = [w for w in vis if w["meta"].get("milestone") == mid]
+        mdone = [w for w in mitems if w["meta"].get("status") == "done"]
+        parts.append('<div class="ms"><h3>%s %s <span class="due">目標 %s</span></h3>%s</div>'
+                     % (_esc(mid), _esc(m.get("title", "")), _esc(m.get("due", "")),
+                        _bar(len(mdone), len(mitems))))
+    parts.append("</section>")
+
+    waiting = [w for w in vis if w["meta"].get("status") == "blocked"
+               and w["meta"].get("blocked_on") == "client"]
+    parts.append('<section class="waiting"><h2>⏳ 待客戶事項</h2>')
+    if waiting:
+        parts.append("<ul>")
+        for w in waiting:
+            parts.append("<li><strong>%s</strong>：%s</li>"
+                         % (_esc(w["meta"].get("title", "")), _esc(w["meta"].get("blocked_note", ""))))
+        parts.append("</ul>")
+    else:
+        parts.append('<p class="empty">目前沒有待客戶提供的事項。</p>')
+    parts.append("</section>")
+
+    doing = [w for w in vis if w["meta"].get("status") in ("doing", "review")]
+    recent = sorted((w for w in vis if w["meta"].get("status") == "done"),
+                    key=lambda w: w["meta"].get("updated", ""), reverse=True)[:10]
+    parts.append('<section class="cols"><div><h2>進行中</h2><ul>')
+    parts.extend("<li>%s <span class=\"tag\">%s</span></li>"
+                 % (_esc(w["meta"].get("title", "")), STATUS_LABEL.get(w["meta"].get("status"), ""))
+                 for w in doing)
+    parts.append("</ul></div><div><h2>最近完成</h2><ul>")
+    parts.extend("<li>%s <span class=\"date\">%s</span></li>"
+                 % (_esc(w["meta"].get("title", "")), _esc(w["meta"].get("updated", "")))
+                 for w in recent)
+    parts.append("</ul></div></section>")
+
+    parts.append("<section><h2>全部工項</h2>")
+    for m in project.get("milestones") or []:
+        mid = m.get("id", "")
+        mitems = [w for w in vis if w["meta"].get("milestone") == mid]
+        if not mitems:
+            continue
+        parts.append("<details open><summary>%s %s（%d 項）</summary><table>"
+                     "<tr><th>項目</th><th>狀態</th></tr>" % (_esc(mid), _esc(m.get("title", "")), len(mitems)))
+        for w in mitems:
+            st = w["meta"].get("status", "")
+            parts.append('<tr><td>%s</td><td><span class="st st-%s">%s</span></td></tr>'
+                         % (_esc(w["meta"].get("title", "")), _esc(st), STATUS_LABEL.get(st, _esc(st))))
+        parts.append("</table></details>")
+    parts.append("</section>")
+
+    body = "\n".join(parts)
+    return _PAGE_TEMPLATE % {"lang_title": _esc(title), "body": body}
+
+
+_PAGE_TEMPLATE = """<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>%(lang_title)s</title>
+<style>
+:root{--bg:#fff;--fg:#1a1a1a;--muted:#666;--line:#e5e5e5;--accent:#0a6e4f;--warn:#b45309;--card:#f7f7f5}
+@media (prefers-color-scheme: dark){:root{--bg:#141414;--fg:#ececec;--muted:#9a9a9a;--line:#2c2c2c;--accent:#3ecf9a;--warn:#f59e0b;--card:#1e1e1e}}
+*{box-sizing:border-box}body{margin:0 auto;max-width:760px;padding:24px 16px 64px;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:32px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:1rem;margin:16px 0 4px}
+.meta,.due,.date{color:var(--muted);font-size:.85rem;font-weight:normal}
+.bar{background:var(--line);border-radius:6px;height:10px;overflow:hidden;display:inline-block;width:70%%;vertical-align:middle}
+.fill{background:var(--accent);height:100%%}.pct{margin-left:10px;font-size:.9rem;color:var(--muted)}
+.waiting{background:var(--card);border-left:4px solid var(--warn);padding:4px 16px 12px;border-radius:6px;margin-top:24px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media (max-width:600px){.cols{grid-template-columns:1fr}}
+ul{padding-left:20px}li{margin:6px 0}
+table{width:100%%;border-collapse:collapse;font-size:.95rem}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+summary{cursor:pointer;font-weight:600;margin:12px 0}
+.st{font-size:.8rem;padding:2px 8px;border-radius:10px;background:var(--line)}
+.st-done{background:var(--accent);color:#fff}.st-blocked{background:var(--warn);color:#fff}
+.empty{color:var(--muted)}
+</style>
+</head>
+<body>
+%(body)s
+<footer><p class="meta">本頁由專案資料自動產生。</p></footer>
+</body>
+</html>
+"""
