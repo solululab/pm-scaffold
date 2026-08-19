@@ -251,5 +251,30 @@ class TestRender(unittest.TestCase):
         self.assertIn("&lt;script&gt;", out)
 
 
+class TestCli(unittest.TestCase):
+    def test_check_sample_ok(self):
+        self.assertEqual(bd.main(["--root", os.path.join(FIXTURES, "sample"), "--check"]), 0)
+
+    def test_check_broken_fails(self):
+        self.assertEqual(bd.main(["--root", os.path.join(FIXTURES, "broken"), "--check"]), 1)
+
+    def test_build_writes_html(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "index.html")
+            rc = bd.main(["--root", os.path.join(FIXTURES, "sample"), "--out", out])
+            self.assertEqual(rc, 0)
+            with open(out, encoding="utf-8") as f:
+                self.assertIn("待客戶事項", f.read())
+
+    def test_build_refuses_on_errors(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "index.html")
+            rc = bd.main(["--root", os.path.join(FIXTURES, "broken"), "--out", out])
+            self.assertEqual(rc, 1)
+            self.assertFalse(os.path.exists(out))
+
+
 if __name__ == "__main__":
     unittest.main()

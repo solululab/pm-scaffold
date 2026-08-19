@@ -451,3 +451,35 @@ summary{cursor:pointer;font-weight:600;margin:12px 0}
 </body>
 </html>
 """
+
+
+# ---------- CLI ----------
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="pm-scaffold 儀表板產生器")
+    ap.add_argument("--root", default=str(Path(__file__).resolve().parent.parent),
+                    help="專案根目錄（預設：repo 根）")
+    ap.add_argument("--out", default=None, help="輸出路徑（預設：<root>/docs/index.html）")
+    ap.add_argument("--check", action="store_true", help="只驗證資料，不產出")
+    args = ap.parse_args(argv)
+
+    project, data, errors = load_all(args.root)
+    errors.extend(validate(project, data))
+    if errors:
+        for e in errors:
+            print("✗ %s" % e, file=sys.stderr)
+        print("共 %d 個錯誤。" % len(errors), file=sys.stderr)
+        return 1
+    if args.check:
+        print("✓ 資料驗證通過（work %d、decisions %d、qa %d、meetings %d）"
+              % (len(data["work"]), len(data["decisions"]), len(data["qa"]), len(data["meetings"])))
+        return 0
+    out = Path(args.out) if args.out else Path(args.root) / "docs" / "index.html"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_html(project, data["work"]), encoding="utf-8")
+    print("✓ 已產出 %s" % out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
