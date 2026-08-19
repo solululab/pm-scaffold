@@ -92,6 +92,15 @@ class TestFrontmatter(unittest.TestCase):
         with self.assertRaises(ValueError):
             bd.parse_frontmatter("---\nid: WI-001\n")
 
+    def test_empty_body(self):
+        meta, body = bd.parse_frontmatter("---\nid: WI-001\n---")
+        self.assertEqual(meta["id"], "WI-001")
+        self.assertEqual(body, "")
+
+    def test_dashes_in_body_kept(self):
+        meta, body = bd.parse_frontmatter("---\nid: WI-001\n---\n前\n---\n後")
+        self.assertEqual(body, "前\n---\n後")
+
 
 class TestLoaders(unittest.TestCase):
     def test_load_dir_skips_underscore_and_non_md(self):
@@ -117,6 +126,63 @@ class TestLoaders(unittest.TestCase):
             self.assertEqual(items, [])
             self.assertEqual(len(errors), 1)
             self.assertIn("WI-001-bad.md", errors[0])
+
+    def test_load_dir_bom_file_ok(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp)
+            (d / "WI-001-bom.md").write_bytes("﻿---\nid: WI-001\n---\nx".encode("utf-8"))
+            items, errors = bd.load_dir(d)
+            self.assertEqual(errors, [])
+            self.assertEqual(items[0]["meta"]["id"], "WI-001")
+
+    def test_load_dir_non_utf8_error_names_file(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp)
+            (d / "WI-002-latin.md").write_bytes(b"---\nid: WI-002\xff\n---\n")
+            items, errors = bd.load_dir(d)
+            self.assertEqual(items, [])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("WI-002-latin.md", errors[0])
+
+    def test_load_dir_unreadable_file_collected(self):
+        import os, tempfile, pathlib
+        if os.geteuid() == 0:
+            self.skipTest("root 可讀任何檔案")
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp)
+            f = d / "WI-003-locked.md"
+            f.write_text("---\nid: WI-003\n---\nx", encoding="utf-8")
+            os.chmod(f, 0)
+            try:
+                items, errors = bd.load_dir(d)
+            finally:
+                os.chmod(f, 0o644)
+            self.assertEqual(items, [])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("WI-003-locked.md", errors[0])
+
+
+class TestLoadAll(unittest.TestCase):
+    def test_missing_root(self):
+        project, data, errors = bd.load_all("/nonexistent/pm-root")
+        self.assertEqual(project, {})
+        self.assertEqual(sorted(data), ["decisions", "meetings", "qa", "work"])
+        self.assertTrue(any("project.yaml" in e for e in errors))
+
+    def test_partial_dirs(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            (root / "project.yaml").write_text("name: x\n", encoding="utf-8")
+            (root / "work").mkdir()
+            (root / "work" / "WI-001-a.md").write_text("---\nid: WI-001\n---\nx", encoding="utf-8")
+            project, data, errors = bd.load_all(root)
+            self.assertEqual(errors, [])
+            self.assertEqual(project["name"], "x")
+            self.assertEqual(len(data["work"]), 1)
+            self.assertEqual(data["qa"], [])
 
 
 if __name__ == "__main__":

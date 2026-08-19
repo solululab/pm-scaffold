@@ -165,8 +165,12 @@ def load_dir(dirpath):
         if f.name.startswith("_"):
             continue
         try:
-            meta, body = parse_frontmatter(f.read_text(encoding="utf-8"), str(f))
+            meta, body = parse_frontmatter(f.read_text(encoding="utf-8-sig"), str(f))
             items.append({"path": str(f), "meta": meta, "body": body})
+        except UnicodeDecodeError as e:
+            errors.append("%s: 非 UTF-8 編碼（%s）" % (f, e))
+        except OSError as e:
+            errors.append("%s: 無法讀取（%s）" % (f, e))
         except ValueError as e:
             errors.append(str(e))
     return items, errors
@@ -180,8 +184,8 @@ def load_all(root):
     pf = root / "project.yaml"
     if pf.is_file():
         try:
-            project = parse_yaml_subset(pf.read_text(encoding="utf-8"))
-        except ValueError as e:
+            project = parse_yaml_subset(pf.read_text(encoding="utf-8-sig"))
+        except (ValueError, OSError) as e:
             errors.append("project.yaml: %s" % e)
     else:
         errors.append("project.yaml: 檔案不存在")
