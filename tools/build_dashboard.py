@@ -167,6 +167,9 @@ def load_dir(dirpath):
             continue
         try:
             meta, body = parse_frontmatter(f.read_text(encoding="utf-8-sig"), str(f))
+            if not isinstance(meta, dict):
+                errors.append("%s: frontmatter 須為 key: value 欄位（不可為清單）" % f)
+                continue
             items.append({"path": str(f), "meta": meta, "body": body})
         except UnicodeDecodeError as e:
             errors.append("%s: 非 UTF-8 編碼（%s）" % (f, e))
@@ -186,6 +189,9 @@ def load_all(root):
     if pf.is_file():
         try:
             project = parse_yaml_subset(pf.read_text(encoding="utf-8-sig"))
+            if not isinstance(project, dict):
+                errors.append("project.yaml: 頂層須為 key: value 設定（不可為清單）")
+                project = {}
         except (ValueError, OSError) as e:
             errors.append("project.yaml: %s" % e)
     else:
@@ -236,12 +242,21 @@ def validate(project, data):
     errors = []
 
     # project.yaml
+    if not isinstance(project, dict):
+        errors.append("project.yaml: 頂層須為 key: value 設定（不可為清單）")
+        project = {}
     if not str(project.get("name", "") or "").strip():
         errors.append("project.yaml: 缺少必填欄位 name")
     _date(project, "started", "project.yaml", errors)
     milestones = project.get("milestones") or []
+    if not isinstance(milestones, list):
+        errors.append("project.yaml: milestones 須為清單（- id: ... 的縮排清單）")
+        milestones = []
     mids = set()
     for m in milestones:
+        if not isinstance(m, dict):
+            errors.append("project.yaml: milestone 須為含 id/title/due 的項目（得到 %r）" % (m,))
+            continue
         mid = str(m.get("id", "") or "").strip()
         if not mid:
             errors.append("project.yaml: milestone 缺少 id")
@@ -252,12 +267,17 @@ def validate(project, data):
         if not str(m.get("title", "") or "").strip():
             errors.append("project.yaml: milestone %s 缺少 title" % mid)
         _date(m, "due", "project.yaml milestone %s" % mid, errors)
+    if not mids:
+        errors.append("project.yaml: 至少需要一個 milestone")
 
     # work/
     seen_wi = set()
     wi_refs = []
     for item in data["work"]:
         meta, path = item["meta"], item["path"]
+        for k, v in meta.items():
+            if not isinstance(v, str):
+                errors.append("%s: 欄位 %s 須為單一值（得到 %r）" % (path, k, v))
         wid = _req(meta, "id", path, errors)
         if wid:
             if not re.match(r"^WI-\d+$", wid):
@@ -287,6 +307,8 @@ def validate(project, data):
                 errors.append("%s: status=blocked 時 blocked_on 為必填" % path)
             elif not BLOCKED_ON_RE.match(bon):
                 errors.append("%s: blocked_on 值非法：%r" % (path, bon))
+            elif bon == wid:
+                errors.append("%s: blocked_on 不可引用自身" % path)
             elif bon.startswith("WI-"):
                 wi_refs.append((path, bon))
             if bon == "client" and not str(meta.get("blocked_note", "") or "").strip():
@@ -375,6 +397,8 @@ def render_html(project, works):
 
     parts.append("<section><h2>里程碑</h2>")
     for m in project.get("milestones") or []:
+        if not isinstance(m, dict):
+            continue
         mid = m.get("id", "")
         mitems = [w for w in vis if w["meta"].get("milestone") == mid]
         mdone = [w for w in mitems if w["meta"].get("status") == "done"]
@@ -399,18 +423,30 @@ def render_html(project, works):
     doing = [w for w in vis if w["meta"].get("status") in ("doing", "review")]
     recent = sorted((w for w in vis if w["meta"].get("status") == "done"),
                     key=lambda w: w["meta"].get("updated", ""), reverse=True)[:10]
-    parts.append('<section class="cols"><div><h2>進行中</h2><ul>')
-    parts.extend("<li>%s <span class=\"tag\">%s</span></li>"
-                 % (_esc(w["meta"].get("title", "")), STATUS_LABEL.get(w["meta"].get("status"), ""))
-                 for w in doing)
-    parts.append("</ul></div><div><h2>最近完成</h2><ul>")
-    parts.extend("<li>%s <span class=\"date\">%s</span></li>"
-                 % (_esc(w["meta"].get("title", "")), _esc(w["meta"].get("updated", "")))
-                 for w in recent)
-    parts.append("</ul></div></section>")
+    parts.append('<section class="cols"><div><h2>進行中</h2>')
+    if doing:
+        parts.append("<ul>")
+        parts.extend("<li>%s <span class=\"tag\">%s</span></li>"
+                     % (_esc(w["meta"].get("title", "")), STATUS_LABEL.get(w["meta"].get("status"), ""))
+                     for w in doing)
+        parts.append("</ul>")
+    else:
+        parts.append('<p class="empty">目前沒有進行中的項目。</p>')
+    parts.append("</div><div><h2>最近完成</h2>")
+    if recent:
+        parts.append("<ul>")
+        parts.extend("<li>%s <span class=\"date\">%s</span></li>"
+                     % (_esc(w["meta"].get("title", "")), _esc(w["meta"].get("updated", "")))
+                     for w in recent)
+        parts.append("</ul>")
+    else:
+        parts.append('<p class="empty">尚無完成項目。</p>')
+    parts.append("</div></section>")
 
     parts.append("<section><h2>全部工項</h2>")
     for m in project.get("milestones") or []:
+        if not isinstance(m, dict):
+            continue
         mid = m.get("id", "")
         mitems = [w for w in vis if w["meta"].get("milestone") == mid]
         if not mitems:
@@ -471,7 +507,12 @@ def main(argv=None):
     ap.add_argument("--check", action="store_true", help="只驗證資料，不產出")
     args = ap.parse_args(argv)
 
-    project, data, errors = load_all(args.root)
+    root = Path(args.root)
+    if not root.is_dir():
+        print("✗ 根目錄不存在：%s" % root, file=sys.stderr)
+        return 1
+
+    project, data, errors = load_all(root)
     errors.extend(validate(project, data))
     if errors:
         for e in errors:

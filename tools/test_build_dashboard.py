@@ -163,6 +163,16 @@ class TestLoaders(unittest.TestCase):
             self.assertEqual(len(errors), 1)
             self.assertIn("WI-003-locked.md", errors[0])
 
+    def test_load_dir_list_frontmatter_reported(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp)
+            (d / "WI-001-list.md").write_text("---\n- a\n- b\n---\nx", encoding="utf-8")
+            items, errors = bd.load_dir(d)
+            self.assertEqual(items, [])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("key: value", errors[0])
+
 
 class TestLoadAll(unittest.TestCase):
     def test_missing_root(self):
@@ -223,6 +233,42 @@ class TestValidate(unittest.TestCase):
         errs = bd.validate(project, data)
         self.assertTrue(any("WI-999" in e and "不存在" in e for e in errs))
 
+    def test_project_top_level_list_reported(self):
+        errs = bd.validate(["not", "a", "map"],
+                           {"work": [], "decisions": [], "qa": [], "meetings": []})
+        self.assertTrue(any("project.yaml" in e and "清單" in e for e in errs))
+
+    def test_milestones_bad_shape_reported(self):
+        for bad in ("M1", ["M1", "M2"], {"id": "M1"}):
+            project = {"name": "x", "started": "2026-01-01", "milestones": bad}
+            errs = bd.validate(project, {"work": [], "decisions": [], "qa": [], "meetings": []})
+            self.assertTrue(any("milestone" in e for e in errs), repr(bad))
+
+    def test_empty_milestones_reported(self):
+        project = {"name": "x", "started": "2026-01-01", "milestones": []}
+        errs = bd.validate(project, {"work": [], "decisions": [], "qa": [], "meetings": []})
+        self.assertTrue(any("至少" in e for e in errs))
+
+    def test_work_list_value_reported(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}]}
+        meta = {"id": "WI-001", "title": ["a", "b"], "owner": "o", "spec_ref": "s",
+                "updated": "2026-08-01", "status": "todo", "priority": "mvp",
+                "milestone": "M1", "client_visible": "true"}
+        errs = bd.validate(project, {"work": [{"path": "a.md", "meta": meta, "body": ""}],
+                                     "decisions": [], "qa": [], "meetings": []})
+        self.assertTrue(any("須為單一值" in e for e in errs))
+
+    def test_blocked_on_self_reported(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}]}
+        meta = {"id": "WI-001", "title": "t", "owner": "o", "spec_ref": "s",
+                "updated": "2026-08-01", "status": "blocked", "blocked_on": "WI-001",
+                "priority": "mvp", "milestone": "M1", "client_visible": "false"}
+        errs = bd.validate(project, {"work": [{"path": "a.md", "meta": meta, "body": ""}],
+                                     "decisions": [], "qa": [], "meetings": []})
+        self.assertTrue(any("自身" in e for e in errs))
+
 
 class TestRender(unittest.TestCase):
     @classmethod
@@ -261,6 +307,14 @@ class TestRender(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", out)
         self.assertIn("&lt;script&gt;", out)
 
+    def test_render_empty_lists_have_placeholder(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}],
+                   "dashboard": {"title": "t"}}
+        out = bd.render_html(project, [])
+        self.assertIn("目前沒有進行中的項目", out)
+        self.assertIn("尚無完成項目", out)
+
 
 class TestCli(unittest.TestCase):
     def test_check_sample_ok(self):
@@ -285,6 +339,14 @@ class TestCli(unittest.TestCase):
             rc = bd.main(["--root", os.path.join(FIXTURES, "broken"), "--out", out])
             self.assertEqual(rc, 1)
             self.assertFalse(os.path.exists(out))
+
+    def test_root_not_exist_message(self):
+        import io, contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            rc = bd.main(["--root", "/nonexistent/pm-root", "--check"])
+        self.assertEqual(rc, 1)
+        self.assertIn("根目錄不存在", buf.getvalue())
 
 
 if __name__ == "__main__":
