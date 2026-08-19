@@ -721,6 +721,11 @@ def _date(meta, field, path, errors, required=True):
         return
     if not DATE_RE.match(val):
         errors.append("%s: %s 日期格式須為 YYYY-MM-DD（得到 %r）" % (path, field, val))
+        return
+    try:
+        datetime.date.fromisoformat(val)
+    except ValueError:
+        errors.append("%s: %s 不是有效日期（得到 %r）" % (path, field, val))
 
 
 def validate(project, data):
@@ -1680,6 +1685,11 @@ git add -A && git commit -m "chore: 驗收總檢完成" --allow-empty
 ```
 
 ---
+
+## 執行期修訂紀錄
+
+- Task 2/3 追加：解析器修復（同縮排清單、冒號清單元素、引號逗號、行尾註解、#值報錯、尾端未解析防護）與載入器強化（utf-8-sig、UnicodeDecodeError/OSError 分層收集）——品質審查發現，皆有回歸測試。
+- Task 5：`_date` 補日曆有效性檢查（`datetime.date.fromisoformat`），檔頭需 `import datetime`；原 DATE_RE 只驗形狀會放過 `2026-13-99`。
 
 ## Self-Review 紀錄
 
