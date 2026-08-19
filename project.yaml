@@ -1,0 +1,15 @@
+# 專案基本資料。clone 後執行 pm-init playbook 會引導改寫本檔。
+name: 未初始化專案（請跑 pm-init）
+client: 客戶名稱
+started: 2026-01-01
+milestones:
+  - id: M1
+    title: 範例里程碑
+    due: 2026-12-31
+people:
+  - name: 請填姓名
+    role: pm
+engineering_repos: []
+dashboard:
+  title: 專案建置進度
+  url: ""
