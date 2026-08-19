@@ -185,5 +185,33 @@ class TestLoadAll(unittest.TestCase):
             self.assertEqual(data["qa"], [])
 
 
+class TestValidate(unittest.TestCase):
+    def _errors(self, name):
+        project, data, errors = bd.load_all(os.path.join(FIXTURES, name))
+        return errors + bd.validate(project, data)
+
+    def test_sample_is_clean(self):
+        self.assertEqual(self._errors("sample"), [])
+
+    def test_broken_reports_each_violation(self):
+        errs = "\n".join(self._errors("broken"))
+        self.assertIn("name", errs)                 # project.name 空白
+        self.assertIn("started", errs)              # 日期格式錯
+        self.assertIn("status 值非法", errs)         # flying
+        self.assertIn("blocked_on", errs)           # blocked 缺 blocked_on
+        self.assertIn("blocked_note", errs)         # client 卡關缺 note
+        self.assertIn("id 重複", errs)               # WI-001 x2
+        self.assertIn("milestone", errs)            # M9 不存在
+        self.assertIn("priority", errs)             # urgent
+        self.assertIn("client_visible", errs)       # maybe
+        self.assertIn("updated", errs)              # 2026/08/10
+
+    def test_invalid_calendar_date_caught(self):
+        errors = []
+        bd._date({"d": "2026-13-99"}, "d", "x.md", errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("不是有效日期", errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()

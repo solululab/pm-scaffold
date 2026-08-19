@@ -10,6 +10,7 @@
 縮排巢狀 mapping、list-of-dicts（dict 欄位限純量）。不支援任意 YAML。
 """
 import argparse
+import datetime
 import html
 import re
 import sys
@@ -195,3 +196,132 @@ def load_all(root):
         data[name] = items
         errors.extend(errs)
     return project, data, errors
+
+
+# ---------- 驗證 ----------
+
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+WORK_STATUS = {"todo", "doing", "blocked", "review", "done", "dropped"}
+PRIORITY = {"mvp", "recommended", "nice"}
+BLOCKED_ON_RE = re.compile(r"^(client|internal|vendor|WI-\d+)$")
+DECISION_STATUS = {"decided", "superseded"}
+QA_STATUS = {"answered", "pending"}
+QA_CHANNEL = {"email", "meeting", "line", "other"}
+MEETING_TYPE = {"standup", "client", "internal"}
+
+
+def _req(meta, field, path, errors):
+    val = str(meta.get(field, "") or "").strip()
+    if not val:
+        errors.append("%s: 缺少必填欄位 %s" % (path, field))
+    return val
+
+
+def _date(meta, field, path, errors, required=True):
+    val = str(meta.get(field, "") or "").strip()
+    if not val:
+        if required:
+            errors.append("%s: 缺少必填欄位 %s" % (path, field))
+        return
+    if not DATE_RE.match(val):
+        errors.append("%s: %s 日期格式須為 YYYY-MM-DD（得到 %r）" % (path, field, val))
+        return
+    try:
+        datetime.date.fromisoformat(val)
+    except ValueError:
+        errors.append("%s: %s 不是有效日期（得到 %r）" % (path, field, val))
+
+
+def validate(project, data):
+    errors = []
+
+    # project.yaml
+    if not str(project.get("name", "") or "").strip():
+        errors.append("project.yaml: 缺少必填欄位 name")
+    _date(project, "started", "project.yaml", errors)
+    milestones = project.get("milestones") or []
+    mids = set()
+    for m in milestones:
+        mid = str(m.get("id", "") or "").strip()
+        if not mid:
+            errors.append("project.yaml: milestone 缺少 id")
+            continue
+        if mid in mids:
+            errors.append("project.yaml: milestone id 重複：%s" % mid)
+        mids.add(mid)
+        if not str(m.get("title", "") or "").strip():
+            errors.append("project.yaml: milestone %s 缺少 title" % mid)
+        _date(m, "due", "project.yaml milestone %s" % mid, errors)
+
+    # work/
+    seen_wi = set()
+    for item in data["work"]:
+        meta, path = item["meta"], item["path"]
+        wid = _req(meta, "id", path, errors)
+        if wid:
+            if not re.match(r"^WI-\d+$", wid):
+                errors.append("%s: id 格式須為 WI-###（得到 %r）" % (path, wid))
+            if wid in seen_wi:
+                errors.append("%s: id 重複：%s" % (path, wid))
+            seen_wi.add(wid)
+        _req(meta, "title", path, errors)
+        _req(meta, "owner", path, errors)
+        _req(meta, "spec_ref", path, errors)
+        _date(meta, "updated", path, errors)
+        status = _req(meta, "status", path, errors)
+        if status and status not in WORK_STATUS:
+            errors.append("%s: status 值非法：%r（允許：%s）" % (path, status, "|".join(sorted(WORK_STATUS))))
+        pri = _req(meta, "priority", path, errors)
+        if pri and pri not in PRIORITY:
+            errors.append("%s: priority 值非法：%r" % (path, pri))
+        ms = _req(meta, "milestone", path, errors)
+        if ms and mids and ms not in mids:
+            errors.append("%s: milestone %r 不存在於 project.yaml" % (path, ms))
+        cv = str(meta.get("client_visible", "") or "").strip()
+        if cv not in {"true", "false"}:
+            errors.append("%s: client_visible 須為 true|false（得到 %r）" % (path, cv))
+        if status == "blocked":
+            bon = str(meta.get("blocked_on", "") or "").strip()
+            if not bon:
+                errors.append("%s: status=blocked 時 blocked_on 為必填" % path)
+            elif not BLOCKED_ON_RE.match(bon):
+                errors.append("%s: blocked_on 值非法：%r" % (path, bon))
+            if bon == "client" and not str(meta.get("blocked_note", "") or "").strip():
+                errors.append("%s: blocked_on=client 時 blocked_note 為必填（會上儀表板）" % path)
+
+    # decisions/
+    for item in data["decisions"]:
+        meta, path = item["meta"], item["path"]
+        did = _req(meta, "id", path, errors)
+        if did and not re.match(r"^D-\d+$", did):
+            errors.append("%s: id 格式須為 D-###" % path)
+        _date(meta, "date", path, errors)
+        _req(meta, "decided_by", path, errors)
+        st = _req(meta, "status", path, errors)
+        if st and st not in DECISION_STATUS:
+            errors.append("%s: status 值非法：%r" % (path, st))
+
+    # qa/
+    for item in data["qa"]:
+        meta, path = item["meta"], item["path"]
+        qid = _req(meta, "id", path, errors)
+        if qid and not re.match(r"^QA-\d+$", qid):
+            errors.append("%s: id 格式須為 QA-###" % path)
+        _date(meta, "date", path, errors)
+        _req(meta, "asked_by", path, errors)
+        ch = _req(meta, "channel", path, errors)
+        if ch and ch not in QA_CHANNEL:
+            errors.append("%s: channel 值非法：%r" % (path, ch))
+        st = _req(meta, "status", path, errors)
+        if st and st not in QA_STATUS:
+            errors.append("%s: status 值非法：%r" % (path, st))
+
+    # meetings/
+    for item in data["meetings"]:
+        meta, path = item["meta"], item["path"]
+        _date(meta, "date", path, errors)
+        ty = _req(meta, "type", path, errors)
+        if ty and ty not in MEETING_TYPE:
+            errors.append("%s: type 值非法：%r" % (path, ty))
+
+    return errors
