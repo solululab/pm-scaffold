@@ -78,5 +78,46 @@ class TestYamlSubset(unittest.TestCase):
         self.assertEqual(bd.parse_yaml_subset("color: '#fff'"), {"color": "#fff"})
 
 
+class TestFrontmatter(unittest.TestCase):
+    def test_parse_ok(self):
+        meta, body = bd.parse_frontmatter("---\nid: WI-001\ntitle: 首頁\n---\n\n## 說明\n內容")
+        self.assertEqual(meta, {"id": "WI-001", "title": "首頁"})
+        self.assertIn("## 說明", body)
+
+    def test_missing_frontmatter(self):
+        with self.assertRaises(ValueError):
+            bd.parse_frontmatter("沒有 frontmatter")
+
+    def test_unclosed_frontmatter(self):
+        with self.assertRaises(ValueError):
+            bd.parse_frontmatter("---\nid: WI-001\n")
+
+
+class TestLoaders(unittest.TestCase):
+    def test_load_dir_skips_underscore_and_non_md(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp) / "work"
+            d.mkdir()
+            (d / "WI-001-a.md").write_text("---\nid: WI-001\n---\nx", encoding="utf-8")
+            (d / "_example-WI-000.md").write_text("---\nid: WI-000\n---\nx", encoding="utf-8")
+            (d / "note.txt").write_text("x", encoding="utf-8")
+            items, errors = bd.load_dir(d)
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["meta"]["id"], "WI-001")
+            self.assertEqual(errors, [])
+
+    def test_load_dir_collects_parse_errors(self):
+        import tempfile, pathlib
+        with tempfile.TemporaryDirectory() as tmp:
+            d = pathlib.Path(tmp) / "work"
+            d.mkdir()
+            (d / "WI-001-bad.md").write_text("沒有 frontmatter", encoding="utf-8")
+            items, errors = bd.load_dir(d)
+            self.assertEqual(items, [])
+            self.assertEqual(len(errors), 1)
+            self.assertIn("WI-001-bad.md", errors[0])
+
+
 if __name__ == "__main__":
     unittest.main()

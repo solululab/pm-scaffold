@@ -136,3 +136,58 @@ def _parse_list(lines, i, indent):
             result.append(parse_scalar(content))
             i += 1
     return result, i
+
+
+# ---------- Frontmatter 與載入 ----------
+
+def parse_frontmatter(text, path=""):
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("%s: 缺少 frontmatter（首行須為 ---）" % path)
+    end = None
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            end = idx
+            break
+    if end is None:
+        raise ValueError("%s: frontmatter 未以 --- 結束" % path)
+    meta = parse_yaml_subset("\n".join(lines[1:end]))
+    return meta, "\n".join(lines[end + 1:])
+
+
+def load_dir(dirpath):
+    """回傳 (items, errors)。item = {path, meta, body}。跳過 _ 開頭與非 .md。"""
+    items, errors = [], []
+    dirpath = Path(dirpath)
+    if not dirpath.is_dir():
+        return items, errors
+    for f in sorted(dirpath.glob("*.md")):
+        if f.name.startswith("_"):
+            continue
+        try:
+            meta, body = parse_frontmatter(f.read_text(encoding="utf-8"), str(f))
+            items.append({"path": str(f), "meta": meta, "body": body})
+        except ValueError as e:
+            errors.append(str(e))
+    return items, errors
+
+
+def load_all(root):
+    """回傳 (project, data, errors)。data = {work, decisions, qa, meetings}。"""
+    root = Path(root)
+    errors = []
+    project = {}
+    pf = root / "project.yaml"
+    if pf.is_file():
+        try:
+            project = parse_yaml_subset(pf.read_text(encoding="utf-8"))
+        except ValueError as e:
+            errors.append("project.yaml: %s" % e)
+    else:
+        errors.append("project.yaml: 檔案不存在")
+    data = {}
+    for name in ("work", "decisions", "qa", "meetings"):
+        items, errs = load_dir(root / name)
+        data[name] = items
+        errors.extend(errs)
+    return project, data, errors
