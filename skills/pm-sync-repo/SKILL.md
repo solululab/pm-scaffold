@@ -12,6 +12,8 @@ description: 掃描 project.yaml 登記的工程 repo commits，草擬工項進�
 2. 對每個 repo：
    - 本機路徑：`git -C <path> log --oneline --no-merges <last_synced>..HEAD`
      （`last_synced` 為空 → 取最近 30 筆並告知使用者）
+   - remote URL：淺層 clone 到暫存目錄（`git clone --filter=blob:none <url> <tmp>`）
+     後同上處理，用完刪除；無法 clone 就回報並請使用者改提供本機路徑。
    - 讀不到 repo → 回報並跳過，不猜。
 3. 將 commits 對應到工項：訊息含 `WI-###` 直接對應；否則以關鍵字比對工項
    title 與說明，標註信心（高/低）。
