@@ -27,6 +27,7 @@ description: clone 本 scaffold 後首次啟用專案時使用——建立 proje
    - repo Settings → Pages → Source: Deploy from a branch → main、`/docs`
    - 自訂網域：DNS 加 CNAME 指向 `<帳號>.github.io`，再於 Pages 設定填網域
    - 取得網址後填回 `project.yaml` 的 `dashboard.url`
-   - 提醒：頁面「公開但不公告網址」，白名單已過濾內部資訊
+   - 提醒：頁面「公開但不公告網址」，白名單已過濾內部資訊；
+     且 Pages 公開的是 `docs/` 整個目錄，內部文件勿放 `docs/`
 7. **收尾**：問「要刪除各目錄的 `_example` 範例檔嗎？」（建議留著當 schema 文件）。
    commit：`chore: pm-init 完成`。

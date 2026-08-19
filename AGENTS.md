@@ -27,6 +27,7 @@
    `standup: YYYY-MM-DD`｜`wi: WI-### → <狀態>`｜`qa: QA-###`｜
    `decision: D-###`｜`dashboard: rebuild`｜`sync: <repo> @<hash>`
 7. 寫入資料後執行 `python3 tools/build_dashboard.py --check`，有錯就修到過。
+8. **工項轉 dropped 前必須先有對應的 `decisions/D-###`**，並在進度日誌註明。
 
 ## 資料模型速查
 
@@ -45,3 +46,6 @@
 blocked_note（僅 blocked_on=client）、專案名與更新日。owner、estimate、
 內部備註在產生器層就被排除——但你寫 blocked_note（client）時仍須意識到
 **它會被客戶看到**，措辭要對外得體。
+
+注意：GitHub Pages 公開的是 **`docs/` 整個目錄**（含 specs/、plans/），
+不只 index.html——內部或客戶敏感文件一律不放 `docs/`。
