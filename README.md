@@ -1,0 +1,59 @@
+# pm-scaffold — AI 協作的專案管理 scaffold
+
+可 clone 重用的客戶交付案管理 repo：Markdown 為真相來源、AI 依 playbook
+維護資料、零依賴腳本產出客戶進度儀表板（GitHub Pages）。
+
+## 這裡放什麼、不放什麼
+
+放：工項與進度、卡關、決策、客戶問答、會議紀錄、簽約文件。
+不放：程式碼（工程 repo 另在他處，僅於 `project.yaml` 登記路徑）。
+
+## 快速開始
+
+    git clone <本repo> my-project-pm && cd my-project-pm
+    rm -rf .git && git init -b main        # 斷開 scaffold 歷史
+    python3 tools/test_build_dashboard.py  # 自我檢查（應全部通過）
+
+然後開你的 AI 工具（Claude Code / Codex / 其他），說「**初始化專案**」——
+agent 會照 `skills/pm-init/SKILL.md` 引導你完成設定、匯入規格書、
+設定 GitHub Pages。
+
+### GitHub Pages（客戶儀表板）
+
+private repo 需 GitHub Pro / Team。Settings → Pages → main + `/docs`。
+自訂子網域：DNS CNAME 指向 `<帳號>.github.io`。頁面為
+**公開但不公告網址**；內容經白名單過濾（詳見 AGENTS.md）。
+
+## 三種角色怎麼用
+
+| 角色 | 對 AI 說 | 發生什麼 |
+|---|---|---|
+| 工程師 | 「我來報進度」 | AI 比對工項、確認後更新狀態與日誌（pm-standup）；也可說「去看我的 repo commits」（pm-sync-repo） |
+| 業務 | 「客戶問退貨流程含不含，怎麼回？」 | AI 只從 repo 資料回答並附出處，可存成 qa/ 檔（pm-ask） |
+| PM | 「健檢」「更新儀表板」 | 行動清單（pm-review）；重建並發布 docs/index.html（pm-dashboard） |
+
+## AI 工具接線
+
+- **Claude Code**：內建（`.claude/skills/` symlink 已就緒；`CLAUDE.md` → `AGENTS.md`）。
+- **Codex / 其他支援 AGENTS.md 的工具**：自動讀 `AGENTS.md`，內含
+  「情境 → playbook」對照表。
+- **完全不支援 skill 的工具**：對 agent 說「照 `skills/<名稱>/SKILL.md` 跑」。
+
+## 資料模型
+
+一事一檔、YAML frontmatter。schema 見各目錄 `_example-*` 檔（工具會跳過
+`_` 開頭檔案）。完整規格：`docs/specs/2026-08-19-pm-scaffold-design.md`。
+
+| 目錄 | 內容 | id |
+|---|---|---|
+| `work/` | 工項（狀態機 todo→doing→review→done；blocked 必填卡在誰） | WI-### |
+| `decisions/` | 決策：背景→選項→決定→重新討論條件 | D-### |
+| `qa/` | 客戶問答：問→答→依據 | QA-### |
+| `meetings/` | 彙報／會議紀錄 | 日期 |
+| `source/` | 簽約文件，**唯讀** | — |
+
+## 儀表板
+
+`python3 tools/build_dashboard.py`（`--check` 只驗證）。輸出
+`docs/index.html`，單檔、繁中、RWD、亮暗色。白名單硬編碼：客戶只看得到
+工項名稱、狀態、里程碑、待客戶事項；owner、工時、內部備註不會出現。

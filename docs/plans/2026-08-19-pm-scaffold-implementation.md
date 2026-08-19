@@ -721,6 +721,11 @@ def _date(meta, field, path, errors, required=True):
         return
     if not DATE_RE.match(val):
         errors.append("%s: %s 日期格式須為 YYYY-MM-DD（得到 %r）" % (path, field, val))
+        return
+    try:
+        datetime.date.fromisoformat(val)
+    except ValueError:
+        errors.append("%s: %s 不是有效日期（得到 %r）" % (path, field, val))
 
 
 def validate(project, data):
@@ -1680,6 +1685,13 @@ git add -A && git commit -m "chore: 驗收總檢完成" --allow-empty
 ```
 
 ---
+
+## 執行期修訂紀錄
+
+- Task 2/3 追加：解析器修復（同縮排清單、冒號清單元素、引號逗號、行尾註解、#值報錯、尾端未解析防護）與載入器強化（utf-8-sig、UnicodeDecodeError/OSError 分層收集）——品質審查發現，皆有回歸測試。
+- Task 5：`_date` 補日曆有效性檢查（`datetime.date.fromisoformat`），檔頭需 `import datetime`；原 DATE_RE 只驗形狀會放過 `2026-13-99`。
+- Task 5 追加：blocked_on 為 WI-### 時需驗證該工項存在（收集 `wi_refs`，work 迴圈後比對 `seen_wi`）——spec §六「WI 引用存在」原計畫漏實作。
+- Task 5-7 追加（品質審查）：非法資料形狀（頂層清單、milestones 非 dict 清單）改報繁中錯誤而非 traceback；milestones 至少一個；work 欄位須純量；blocked_on 禁自我引用；渲染器空清單有文案、跳過非 dict milestone；CLI root 不存在早退。皆有回歸測試。
 
 ## Self-Review 紀錄
 
