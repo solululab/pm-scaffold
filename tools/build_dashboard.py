@@ -24,12 +24,27 @@ def parse_scalar(s):
     return s
 
 
+def _strip_comment(s):
+    """去除引號外的行尾註解（前面須有空白的 #）。值本身要含「 #」時請用引號包住。"""
+    quote = None
+    for idx, ch in enumerate(s):
+        if quote:
+            if ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+        elif ch == "#" and idx > 0 and s[idx - 1] in " \t":
+            return s[:idx].rstrip()
+    return s
+
+
 def _lines(text):
     out = []
     for raw in text.splitlines():
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
-        out.append((len(raw) - len(raw.lstrip(" ")), raw.strip()))
+        line = _strip_comment(raw.rstrip())
+        out.append((len(line) - len(line.lstrip(" ")), line.strip()))
     return out
 
 
@@ -37,9 +52,14 @@ def parse_yaml_subset(text):
     lines = _lines(text)
     if not lines:
         return {}
-    obj, _ = _parse_block(lines, 0, lines[0][0])
+    obj, end = _parse_block(lines, 0, lines[0][0])
+    if end != len(lines):
+        raise ValueError("無法解析（有效行 %d 之後）：%r" % (end, lines[end][1]))
     return obj
 
+
+# 以下三個函式互相遞迴，共用慣例：(lines, i, indent) -> (值, 下一個未消化的行號)。
+# 重複的 key 為後者覆蓋（同多數 YAML 實作）；重複 id 的偵測屬驗證器職責，非解析器。
 
 def _parse_block(lines, i, indent):
     if lines[i][1].startswith("- "):
@@ -58,19 +78,32 @@ def _parse_map(lines, i, indent):
         key, _, rest = line.partition(":")
         key, rest = key.strip(), rest.strip()
         if rest == "":
-            if i + 1 < len(lines) and lines[i + 1][0] > ind:
-                result[key], i = _parse_block(lines, i + 1, lines[i + 1][0])
+            nxt = lines[i + 1] if i + 1 < len(lines) else None
+            # 巢狀區塊：比 key 深，或與 key 同縮排的清單（YAML 常見寫法）
+            if nxt and (nxt[0] > ind or (nxt[0] == ind and nxt[1].startswith("- "))):
+                result[key], i = _parse_block(lines, i + 1, nxt[0])
             else:
                 result[key] = ""
                 i += 1
         elif rest.startswith("[") and rest.endswith("]"):
-            inner = rest[1:-1]
-            result[key] = [parse_scalar(x) for x in inner.split(",") if x.strip()]
+            result[key] = _parse_inline_list(rest, line)
             i += 1
         else:
             result[key] = parse_scalar(rest)
             i += 1
     return result, i
+
+
+def _parse_inline_list(rest, context):
+    items = [parse_scalar(x) for x in rest[1:-1].split(",") if x.strip()]
+    for it in items:
+        if "'" in it or '"' in it:
+            raise ValueError("行內清單元素含引號/逗號歧義，請改用縮排清單：%r" % context)
+    return items
+
+
+# 清單項是 dict 的判準：開頭是「key:」且冒號後接空白或行尾（URL 如 http://x 不會誤中）
+_ITEM_KEY_RE = re.compile(r"^[^\s:#]+:(\s|$)")
 
 
 def _parse_list(lines, i, indent):
@@ -80,10 +113,11 @@ def _parse_list(lines, i, indent):
         if ind != indent or not line.startswith("- "):
             break
         content = line[2:].strip()
-        if ":" in content:
+        if _ITEM_KEY_RE.match(content):
             key, _, rest = content.partition(":")
             item = {key.strip(): parse_scalar(rest)}
             i += 1
+            # dict 項的後續欄位縮排 = 清單縮排 + 2（「- 」佔兩格）
             while i < len(lines) and lines[i][0] == indent + 2 and not lines[i][1].startswith("- "):
                 k, _, r = lines[i][1].partition(":")
                 item[k.strip()] = parse_scalar(r)
