@@ -255,6 +255,7 @@ def validate(project, data):
 
     # work/
     seen_wi = set()
+    wi_refs = []
     for item in data["work"]:
         meta, path = item["meta"], item["path"]
         wid = _req(meta, "id", path, errors)
@@ -286,8 +287,15 @@ def validate(project, data):
                 errors.append("%s: status=blocked 時 blocked_on 為必填" % path)
             elif not BLOCKED_ON_RE.match(bon):
                 errors.append("%s: blocked_on 值非法：%r" % (path, bon))
+            elif bon.startswith("WI-"):
+                wi_refs.append((path, bon))
             if bon == "client" and not str(meta.get("blocked_note", "") or "").strip():
                 errors.append("%s: blocked_on=client 時 blocked_note 為必填（會上儀表板）" % path)
+
+    # blocked_on 引用的工項必須存在（需全部 id 收集完才能查）
+    for path, ref in wi_refs:
+        if ref not in seen_wi:
+            errors.append("%s: blocked_on 引用的 %s 不存在" % (path, ref))
 
     # decisions/
     for item in data["decisions"]:

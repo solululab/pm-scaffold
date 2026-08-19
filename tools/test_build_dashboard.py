@@ -212,6 +212,17 @@ class TestValidate(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertIn("不是有效日期", errors[0])
 
+    def test_blocked_on_unknown_wi_caught(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}]}
+        data = {"work": [{"path": "a.md", "body": "", "meta": {
+                    "id": "WI-001", "title": "t", "owner": "o", "spec_ref": "s",
+                    "updated": "2026-08-01", "status": "blocked", "blocked_on": "WI-999",
+                    "priority": "mvp", "milestone": "M1", "client_visible": "false"}}],
+                "decisions": [], "qa": [], "meetings": []}
+        errs = bd.validate(project, data)
+        self.assertTrue(any("WI-999" in e and "不存在" in e for e in errs))
+
 
 class TestRender(unittest.TestCase):
     @classmethod
