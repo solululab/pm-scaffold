@@ -25,7 +25,12 @@ def parse_scalar(s):
 
 
 def _strip_comment(s):
-    """去除引號外的行尾註解（前面須有空白的 #）。值本身要含「 #」時請用引號包住。"""
+    """去除引號外的行尾註解（前面有空白、# 後接空白或行尾才算註解）。
+
+    `status: todo  # 說明` → 註解，去除。
+    `color: #fff`（# 後無空白）→ 視為值含 #，直接報錯，要求加引號，
+    避免靜默清空資料。值要含「 #」請用引號包住。
+    """
     quote = None
     for idx, ch in enumerate(s):
         if quote:
@@ -34,6 +39,10 @@ def _strip_comment(s):
         elif ch in "'\"":
             quote = ch
         elif ch == "#" and idx > 0 and s[idx - 1] in " \t":
+            if idx + 1 < len(s) and s[idx + 1] not in " \t":
+                raise ValueError(
+                    "值疑似含 #（如色碼/編號）：%r——請用引號包住值，"
+                    "或在註解的 # 後加空白" % s)
             return s[:idx].rstrip()
     return s
 

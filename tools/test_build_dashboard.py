@@ -70,6 +70,13 @@ class TestYamlSubset(unittest.TestCase):
         with self.assertRaises(ValueError):
             bd.parse_yaml_subset("a: 1\n- stray")
 
+    def test_unquoted_hash_value_raises(self):
+        with self.assertRaises(ValueError):
+            bd.parse_yaml_subset("color: #fff")
+
+    def test_quoted_hash_value_preserved(self):
+        self.assertEqual(bd.parse_yaml_subset("color: '#fff'"), {"color": "#fff"})
+
 
 if __name__ == "__main__":
     unittest.main()
