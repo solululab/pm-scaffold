@@ -16,6 +16,10 @@ description: 每週健檢——找出過期工項、老化卡關、未答問題�
    - **儀表板落後**：`git log -1 --format=%ci -- docs/index.html` 早於
      work/ 最後異動 → 建議跑 pm-dashboard
    - milestone due 已過但仍有未完成工項 → 列出
+   - **工項 due 已過但未完成** → 列出（儀表板會標紅，客戶看得到）
 3. 產出行動清單（誰、該做什麼、依據哪個檔案），按急迫排序。
-4. **只報告，不自動改資料。** 使用者針對個別項目下指令後才動
+4. **請使用者重新評估 `dashboard.health` 燈號**（green|amber|red ＋
+   health_note）：陳述現況證據、給建議值，由使用者拍板後寫入。
+   燈號是 PM 的判斷，AI 不得自動改。
+5. **其餘只報告，不自動改資料。** 使用者針對個別項目下指令後才動
    （轉交 pm-standup / pm-dashboard 流程）。

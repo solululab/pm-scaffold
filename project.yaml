@@ -13,3 +13,9 @@ engineering_repos: []
 dashboard:
   title: 專案建置進度
   url: ""
+  # health: green      # 選填 green|amber|red——PM 手動評估的整體健康度，會上儀表板
+  # health_note: ""    # 選填，燈號旁的一句對外說明
+  # side_labels:       # 選填，工項 side 欄的顯示文字（預設 開發方/客戶/雙方）
+  #   vendor: 我方公司名
+  #   client: 客戶
+  #   both: 雙方

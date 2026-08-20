@@ -302,6 +302,17 @@ class TestValidate(unittest.TestCase):
         errs = bd.validate(project, data(dict(base, side="樂禾")))
         self.assertTrue(any("side 值非法" in e for e in errs))
 
+    def test_dashboard_health_validated(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}]}
+        empty = {"work": [], "decisions": [], "qa": [], "meetings": []}
+        for ok in ("green", "amber", "red", ""):
+            project["dashboard"] = {"title": "t", "health": ok}
+            self.assertEqual(bd.validate(project, empty), [], ok)
+        project["dashboard"] = {"title": "t", "health": "blue"}
+        errs = bd.validate(project, empty)
+        self.assertTrue(any("dashboard.health 值非法" in e for e in errs))
+
 
 class TestRender(unittest.TestCase):
     @classmethod
@@ -436,6 +447,26 @@ class TestRender(unittest.TestCase):
         # 無符合項目 → 佔位文字
         out2 = bd.render_html(project, [self._wi(3, due="2999-06-01")])
         self.assertIn("未來兩週內沒有截止項目", out2)
+
+    def test_health_badge_and_kpis(self):
+        project = {"name": "x", "started": "2000-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2999-12-31"}],
+                   "dashboard": {"title": "t", "health": "amber", "health_note": "等客戶資料"}}
+        works = [self._wi(1, status="doing"),
+                 self._wi(2, status="blocked", blocked_on="client", blocked_note="待提供"),
+                 self._wi(3, status="done")]
+        out = bd.render_html(project, works)
+        self.assertIn('class="health health-amber"', out)
+        self.assertIn("🟡 有風險", out)
+        self.assertIn("等客戶資料", out)
+        self.assertIn("整體進度（MVP）", out)
+        self.assertIn("距 M1 目標", out)
+        self.assertIn('<div class="lbl">進行中</div><div class="num">1 項</div>', out)
+        self.assertIn('<div class="lbl">待客戶</div><div class="num">1 項</div>', out)
+        # 未設 health → 不出現燈號
+        project2 = dict(project, dashboard={"title": "t"})
+        out2 = bd.render_html(project2, works)
+        self.assertNotIn('class="health', out2)
 
 
 class TestCli(unittest.TestCase):

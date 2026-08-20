@@ -270,6 +270,11 @@ def validate(project, data):
         _date(m, "due", "project.yaml milestone %s" % mid, errors)
     if not mids:
         errors.append("project.yaml: 至少需要一個 milestone")
+    dash = project.get("dashboard")
+    if isinstance(dash, dict):
+        h = str(dash.get("health", "") or "").strip()
+        if h and h not in HEALTH_LABEL:
+            errors.append("project.yaml: dashboard.health 值非法：%r（允許：green|amber|red）" % h)
 
     # work/
     seen_wi = set()
@@ -367,6 +372,8 @@ def validate(project, data):
 STATUS_LABEL = {"todo": "待辦", "doing": "進行中", "blocked": "卡關",
                 "review": "驗收中", "done": "完成"}
 SIDE_DEFAULT_LABELS = {"vendor": "開發方", "client": "客戶", "both": "雙方"}
+HEALTH_LABEL = {"green": "進度正常", "amber": "有風險", "red": "進度延誤"}
+HEALTH_ICON = {"green": "🟢", "amber": "🟡", "red": "🔴"}
 
 
 def _esc(s):
@@ -470,8 +477,40 @@ def render_html(project, works):
     parts = []
     parts.append("<header><h1>%s</h1>" % _esc(title))
     parts.append('<p class="meta">最後更新：%s</p>' % _esc(updated))
-    parts.append('<section class="overall"><h2>整體進度（MVP）</h2>%s</section></header>'
-                 % _bar(len(mvp_done), len(mvp)))
+
+    # 健康度燈號：由 PM 於 project.yaml dashboard.health 手動評估，不自動判定
+    health = str(dash.get("health", "") or "").strip()
+    if health in HEALTH_LABEL:
+        note = str(dash.get("health_note", "") or "").strip()
+        parts.append('<p><span class="health health-%s">%s %s</span>%s</p>'
+                     % (health, HEALTH_ICON[health], HEALTH_LABEL[health],
+                        ' <span class="meta">%s</span>' % _esc(note) if note else ""))
+
+    # KPI 速覽
+    pct_val = int(round(len(mvp_done) * 100.0 / len(mvp))) if mvp else 0
+    doing_n = len([w for w in vis if w["meta"].get("status") in ("doing", "review")])
+    waiting_n = len([w for w in vis if w["meta"].get("status") == "blocked"
+                     and w["meta"].get("blocked_on") == "client"])
+    next_ms = None
+    for m in project.get("milestones") or []:
+        if not isinstance(m, dict):
+            continue
+        d = str(m.get("due", "") or "").strip()
+        try:
+            datetime.date.fromisoformat(d)
+        except ValueError:
+            continue
+        if d >= today and (next_ms is None or d < next_ms[1]):
+            next_ms = (str(m.get("id", "")), d)
+    tiles = ['<div class="kpi"><div class="lbl">整體進度（MVP）</div><div class="num">%d%%</div>%s</div>'
+             % (pct_val, _bar(len(mvp_done), len(mvp)))]
+    if next_ms:
+        days = (datetime.date.fromisoformat(next_ms[1]) - datetime.date.fromisoformat(today)).days
+        tiles.append('<div class="kpi"><div class="lbl">距 %s 目標</div><div class="num">%d 天</div>'
+                     '<div class="meta">%s</div></div>' % (_esc(next_ms[0]), days, _esc(next_ms[1])))
+    tiles.append('<div class="kpi"><div class="lbl">進行中</div><div class="num">%d 項</div></div>' % doing_n)
+    tiles.append('<div class="kpi"><div class="lbl">待客戶</div><div class="num">%d 項</div></div>' % waiting_n)
+    parts.append('<div class="kpis">%s</div></header>' % "".join(tiles))
 
     parts.append("<section><h2>里程碑</h2>")
     has_tl = False
@@ -507,7 +546,7 @@ def render_html(project, works):
         if days <= 14:
             upcoming.append((due, days, w))
     upcoming.sort(key=lambda x: x[0])
-    parts.append('<section><h2>📅 近期截止</h2>')
+    parts.append('<div class="grid2"><section><h2>📅 近期截止</h2>')
     if upcoming:
         parts.append("<ul>")
         for due, days, w in upcoming:
@@ -537,7 +576,7 @@ def render_html(project, works):
         parts.append("</ul>")
     else:
         parts.append('<p class="empty">目前沒有待客戶提供的事項。</p>')
-    parts.append("</section>")
+    parts.append("</section></div>")
 
     doing = [w for w in vis if w["meta"].get("status") in ("doing", "review")]
     recent = sorted((w for w in vis if w["meta"].get("status") == "done"),
@@ -600,7 +639,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 <style>
 :root{--bg:#fff;--fg:#1a1a1a;--muted:#666;--line:#e5e5e5;--accent:#0a6e4f;--warn:#b45309;--danger:#c0392b;--card:#f7f7f5}
 @media (prefers-color-scheme: dark){:root{--bg:#141414;--fg:#ececec;--muted:#9a9a9a;--line:#2c2c2c;--accent:#3ecf9a;--warn:#f59e0b;--danger:#f87171;--card:#1e1e1e}}
-*{box-sizing:border-box}body{margin:0 auto;max-width:760px;padding:24px 16px 64px;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
+*{box-sizing:border-box}body{margin:0 auto;max-width:1120px;padding:24px 24px 64px;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
 h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:32px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:1rem;margin:16px 0 4px}
 .meta,.due,.date{color:var(--muted);font-size:.85rem;font-weight:normal}
 .overdue{color:var(--danger);font-weight:600}
@@ -618,7 +657,15 @@ h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:32px 0 12px;border
 .bar{background:var(--line);border-radius:6px;height:10px;overflow:hidden;display:inline-block;width:70%%;vertical-align:middle}
 .fill{background:var(--accent);height:100%%}.pct{margin-left:10px;font-size:.9rem;color:var(--muted)}
 .waiting{background:var(--card);border-left:4px solid var(--warn);padding:4px 16px 12px;border-radius:6px;margin-top:24px}
-.cols{display:grid;grid-template-columns:1fr 1fr;gap:24px}@media (max-width:600px){.cols{grid-template-columns:1fr}}
+.cols,.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 32px;align-items:start}
+@media (max-width:800px){.cols,.grid2{grid-template-columns:1fr}}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0 8px}
+.kpi{background:var(--card);border-radius:8px;padding:12px 16px}
+.kpi .num{font-size:1.7rem;font-weight:700;line-height:1.3}
+.kpi .lbl{color:var(--muted);font-size:.85rem}
+.kpi .bar{width:100%%;display:block;margin-top:6px}.kpi .pct{display:none}
+.health{display:inline-block;padding:2px 14px;border-radius:14px;font-size:.9rem;font-weight:600;color:#fff}
+.health-green{background:var(--accent)}.health-amber{background:var(--warn)}.health-red{background:var(--danger)}
 ul{padding-left:20px}li{margin:6px 0}
 table{width:100%%;border-collapse:collapse;font-size:.95rem}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
 summary{cursor:pointer;font-weight:600;margin:12px 0}
