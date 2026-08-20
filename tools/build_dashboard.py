@@ -208,6 +208,7 @@ def load_all(root):
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 WORK_STATUS = {"todo", "doing", "blocked", "review", "done", "dropped"}
+WORK_SIDE = {"vendor", "client", "both"}
 PRIORITY = {"mvp", "recommended", "nice"}
 BLOCKED_ON_RE = re.compile(r"^(client|internal|vendor|WI-\d+)$")
 DECISION_STATUS = {"decided", "superseded"}
@@ -290,6 +291,9 @@ def validate(project, data):
         _req(meta, "spec_ref", path, errors)
         _date(meta, "updated", path, errors)
         _date(meta, "due", path, errors, required=False)
+        side = str(meta.get("side", "") or "").strip()
+        if side and side not in WORK_SIDE:
+            errors.append("%s: side 值非法：%r（允許：%s）" % (path, side, "|".join(sorted(WORK_SIDE))))
         status = _req(meta, "status", path, errors)
         if status and status not in WORK_STATUS:
             errors.append("%s: status 值非法：%r（允許：%s）" % (path, status, "|".join(sorted(WORK_STATUS))))
@@ -362,6 +366,7 @@ def validate(project, data):
 
 STATUS_LABEL = {"todo": "待辦", "doing": "進行中", "blocked": "卡關",
                 "review": "驗收中", "done": "完成"}
+SIDE_DEFAULT_LABELS = {"vendor": "開發方", "client": "客戶", "both": "雙方"}
 
 
 def _esc(s):
@@ -390,9 +395,71 @@ def _bar(done, total):
             '<span class="pct">%d / %d</span>' % (pct, done, total))
 
 
+def _dot_class(meta, today):
+    st = meta.get("status", "")
+    due = str(meta.get("due", "") or "").strip()
+    if st != "done" and due and due < today:
+        return "dot-overdue"
+    if st == "done":
+        return "dot-done"
+    if st == "blocked":
+        return "dot-blocked"
+    return "dot-todo"
+
+
+def _timeline(start, end, items, today):
+    """里程碑時間軸：工項依 due 落點成點，顏色依狀態，加今天標線。
+
+    起訖或工項 due 解析不出來就靜默省略（timeline 是加值視覺，不擋渲染）。
+    同一落點的點垂直堆疊，避免互相蓋住。
+    """
+    try:
+        s = datetime.date.fromisoformat(str(start or "").strip())
+        e = datetime.date.fromisoformat(str(end or "").strip())
+    except ValueError:
+        return ""
+    span = (e - s).days
+    if span <= 0:
+        return ""
+
+    def pct(d):
+        return max(0, min(100, int(round((d - s).days * 100.0 / span))))
+
+    dots, lanes = [], {}
+    for w in items:
+        due = str(w["meta"].get("due", "") or "").strip()
+        try:
+            d = datetime.date.fromisoformat(due)
+        except ValueError:
+            continue
+        p = pct(d)
+        lane = lanes.get(p, 0)
+        lanes[p] = lane + 1
+        dots.append('<span class="dot %s" style="left:%d%%;top:%dpx" title="%s（截止 %s）"></span>'
+                    % (_dot_class(w["meta"], today), p, 5 + lane * 12,
+                       _esc(w["meta"].get("title", "")), _esc(due)))
+    if not dots:
+        return ""
+    height = 10 + 12 * max(lanes.values())
+    try:
+        tp = pct(datetime.date.fromisoformat(today))
+        today_html = '<span class="today" style="left:%d%%" title="今天 %s"></span>' % (tp, _esc(today))
+    except ValueError:
+        today_html = ""
+    return ('<div class="tl" style="height:%dpx"><span class="tl-date l">%s</span>'
+            '<span class="tl-date r">%s</span>%s%s</div>'
+            % (height + 10, _esc(str(start)), _esc(str(end)), today_html, "".join(dots)))
+
+
 def render_html(project, works):
     vis = _visible(works)
     today = datetime.date.today().isoformat()
+    side_labels = dict(SIDE_DEFAULT_LABELS)
+    conf = (project.get("dashboard") or {}).get("side_labels")
+    if isinstance(conf, dict):
+        side_labels.update({k: str(v).strip() for k, v in conf.items()
+                            if k in WORK_SIDE and str(v).strip()})
+    show_side = any(str(w["meta"].get("side", "") or "").strip() for w in vis)
     dash = project.get("dashboard") or {}
     title = str(dash.get("title") or "").strip() or "%s 專案進度" % project.get("name", "")
     updated = max((w["meta"].get("updated", "") for w in vis), default="—")
@@ -407,15 +474,53 @@ def render_html(project, works):
                  % _bar(len(mvp_done), len(mvp)))
 
     parts.append("<section><h2>里程碑</h2>")
+    has_tl = False
     for m in project.get("milestones") or []:
         if not isinstance(m, dict):
             continue
         mid = m.get("id", "")
         mitems = [w for w in vis if w["meta"].get("milestone") == mid]
         mdone = [w for w in mitems if w["meta"].get("status") == "done"]
-        parts.append('<div class="ms"><h3>%s %s <span class="due">目標 %s</span></h3>%s</div>'
+        tl = _timeline(project.get("started", ""), m.get("due", ""), mitems, today)
+        has_tl = has_tl or bool(tl)
+        parts.append('<div class="ms"><h3>%s %s <span class="due">目標 %s</span></h3>%s%s</div>'
                      % (_esc(mid), _esc(m.get("title", "")), _esc(m.get("due", "")),
-                        _bar(len(mdone), len(mitems))))
+                        _bar(len(mdone), len(mitems)), tl))
+    if has_tl:
+        parts.append('<p class="legend">'
+                     '<span class="dot dot-done"></span>完成'
+                     '<span class="dot dot-todo"></span>待辦／進行'
+                     '<span class="dot dot-blocked"></span>卡關'
+                     '<span class="dot dot-overdue"></span>逾期'
+                     '<span class="today-sample"></span>今天</p>')
+    parts.append("</section>")
+
+    upcoming = []
+    for w in vis:
+        due = str(w["meta"].get("due", "") or "").strip()
+        if not due or w["meta"].get("status") == "done":
+            continue
+        try:
+            days = (datetime.date.fromisoformat(due) - datetime.date.fromisoformat(today)).days
+        except ValueError:
+            continue
+        if days <= 14:
+            upcoming.append((due, days, w))
+    upcoming.sort(key=lambda x: x[0])
+    parts.append('<section><h2>📅 近期截止</h2>')
+    if upcoming:
+        parts.append("<ul>")
+        for due, days, w in upcoming:
+            if days < 0:
+                tag = '<span class="due overdue">逾期 %d 天</span>' % -days
+            elif days == 0:
+                tag = '<span class="due overdue">今天截止</span>'
+            else:
+                tag = '<span class="due">剩 %d 天（%s）</span>' % (days, _esc(due))
+            parts.append("<li>%s %s</li>" % (_esc(w["meta"].get("title", "")), tag))
+        parts.append("</ul>")
+    else:
+        parts.append('<p class="empty">未來兩週內沒有截止項目。</p>')
     parts.append("</section>")
 
     waiting = [w for w in vis if w["meta"].get("status") == "blocked"
@@ -465,12 +570,18 @@ def render_html(project, works):
         mitems = [w for w in vis if w["meta"].get("milestone") == mid]
         if not mitems:
             continue
-        parts.append("<details open><summary>%s %s（%d 項）</summary><table>"
-                     "<tr><th>項目</th><th>狀態</th><th>截止</th></tr>" % (_esc(mid), _esc(m.get("title", "")), len(mitems)))
+        head = ("<tr><th>項目</th>" + ("<th>負責方</th>" if show_side else "")
+                + "<th>狀態</th><th>截止</th></tr>")
+        parts.append("<details open><summary>%s %s（%d 項）</summary><table>%s"
+                     % (_esc(mid), _esc(m.get("title", "")), len(mitems), head))
         for w in mitems:
             st = w["meta"].get("status", "")
-            parts.append('<tr><td>%s</td><td><span class="st st-%s">%s</span></td><td>%s</td></tr>'
-                         % (_esc(w["meta"].get("title", "")), _esc(st), STATUS_LABEL.get(st, _esc(st)),
+            side_td = ""
+            if show_side:
+                side = str(w["meta"].get("side", "") or "").strip()
+                side_td = "<td>%s</td>" % (_esc(side_labels[side]) if side in side_labels else "—")
+            parts.append('<tr><td>%s</td>%s<td><span class="st st-%s">%s</span></td><td>%s</td></tr>'
+                         % (_esc(w["meta"].get("title", "")), side_td, _esc(st), STATUS_LABEL.get(st, _esc(st)),
                             _due_span(w["meta"], today) or '<span class="due">—</span>'))
         parts.append("</table></details>")
     parts.append("</section>")
@@ -487,12 +598,23 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 <meta name="robots" content="noindex">
 <title>%(lang_title)s</title>
 <style>
-:root{--bg:#fff;--fg:#1a1a1a;--muted:#666;--line:#e5e5e5;--accent:#0a6e4f;--warn:#b45309;--card:#f7f7f5}
-@media (prefers-color-scheme: dark){:root{--bg:#141414;--fg:#ececec;--muted:#9a9a9a;--line:#2c2c2c;--accent:#3ecf9a;--warn:#f59e0b;--card:#1e1e1e}}
+:root{--bg:#fff;--fg:#1a1a1a;--muted:#666;--line:#e5e5e5;--accent:#0a6e4f;--warn:#b45309;--danger:#c0392b;--card:#f7f7f5}
+@media (prefers-color-scheme: dark){:root{--bg:#141414;--fg:#ececec;--muted:#9a9a9a;--line:#2c2c2c;--accent:#3ecf9a;--warn:#f59e0b;--danger:#f87171;--card:#1e1e1e}}
 *{box-sizing:border-box}body{margin:0 auto;max-width:760px;padding:24px 16px 64px;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
 h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:32px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:1rem;margin:16px 0 4px}
 .meta,.due,.date{color:var(--muted);font-size:.85rem;font-weight:normal}
-.overdue{color:var(--warn);font-weight:600}
+.overdue{color:var(--danger);font-weight:600}
+.tl{position:relative;background:var(--card);border-radius:6px;margin:8px 0 2px;overflow:hidden}
+.dot{position:absolute;width:10px;height:10px;border-radius:50%%;transform:translateX(-50%%)}
+.dot-done{background:var(--accent)}.dot-todo{background:var(--muted)}
+.dot-blocked{background:var(--warn)}.dot-overdue{background:var(--danger)}
+.today{position:absolute;top:0;bottom:0;width:2px;background:var(--fg);opacity:.45;transform:translateX(-50%%)}
+.tl-date{position:absolute;bottom:0;font-size:.7rem;color:var(--muted)}
+.tl-date.l{left:4px}.tl-date.r{right:4px}
+.legend{color:var(--muted);font-size:.8rem;margin:8px 0 0}
+.legend .dot{position:static;display:inline-block;transform:none;vertical-align:middle;margin:0 4px 2px 12px}
+.legend .dot:first-child{margin-left:0}
+.legend .today-sample{display:inline-block;width:2px;height:12px;background:var(--fg);opacity:.45;vertical-align:middle;margin:0 4px 2px 12px}
 .bar{background:var(--line);border-radius:6px;height:10px;overflow:hidden;display:inline-block;width:70%%;vertical-align:middle}
 .fill{background:var(--accent);height:100%%}.pct{margin-left:10px;font-size:.9rem;color:var(--muted)}
 .waiting{background:var(--card);border-left:4px solid var(--warn);padding:4px 16px 12px;border-radius:6px;margin-top:24px}

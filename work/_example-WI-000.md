@@ -3,6 +3,7 @@ id: WI-000
 title: 範例工項（複製本檔去掉底線開頭建新工項）
 status: todo           # todo | doing | blocked | review | done | dropped
 owner: 姓名
+side: ""               # 負責方（選填）：vendor | client | both；會以 dashboard.side_labels 的文字上儀表板（owner 人名不會）
 blocked_on: ""         # status=blocked 時必填：client | internal | vendor | WI-###
 blocked_note: ""       # blocked_on=client 時必填，會顯示在客戶儀表板
 priority: mvp          # mvp | recommended | nice

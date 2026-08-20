@@ -285,6 +285,23 @@ class TestValidate(unittest.TestCase):
         errs = bd.validate(project, data(dict(base, due="9/5")))
         self.assertTrue(any("due" in e and "日期格式" in e for e in errs))
 
+    def test_work_side_optional_but_validated(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}]}
+        base = {"id": "WI-001", "title": "t", "owner": "o", "spec_ref": "s",
+                "updated": "2026-08-01", "status": "todo", "priority": "mvp",
+                "milestone": "M1", "client_visible": "true"}
+
+        def data(meta):
+            return {"work": [{"path": "a.md", "meta": meta, "body": ""}],
+                    "decisions": [], "qa": [], "meetings": []}
+
+        self.assertEqual(bd.validate(project, data(dict(base))), [])  # 無 side 合法
+        for ok in ("vendor", "client", "both"):
+            self.assertEqual(bd.validate(project, data(dict(base, side=ok))), [])
+        errs = bd.validate(project, data(dict(base, side="樂禾")))
+        self.assertTrue(any("side 值非法" in e for e in errs))
+
 
 class TestRender(unittest.TestCase):
     @classmethod
@@ -352,7 +369,8 @@ class TestRender(unittest.TestCase):
         self.assertIn("2999-12-31", out)
         self.assertIn('class="due overdue">2000-01-01', out)
         self.assertIn('class="due">2000-01-02', out)
-        self.assertEqual(out.count('class="due overdue"'), 1)
+        # 逾期標記出現在全部工項表與近期截止區各一次，且不含已完成項
+        self.assertEqual(out.count('class="due overdue"'), 2)
         self.assertIn("—", out)
 
     def test_waiting_item_shows_due(self):
@@ -363,6 +381,61 @@ class TestRender(unittest.TestCase):
                           blocked_note="待提供資料", due="2026-09-05")]
         out = bd.render_html(project, works)
         self.assertIn("截止 2026-09-05", out)
+
+    def test_side_column_uses_labels_not_owner(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}],
+                   "dashboard": {"title": "t", "side_labels": {"vendor": "樂禾", "client": "客戶"}}}
+        works = [self._wi(1, side="vendor", owner="內部人員甲"),
+                 self._wi(2, side="client"),
+                 self._wi(3, side="both"),
+                 self._wi(4)]  # 無 side → —
+        out = bd.render_html(project, works)
+        self.assertIn("<th>負責方</th>", out)
+        self.assertIn("樂禾", out)          # 自訂 label
+        self.assertIn("客戶", out)
+        self.assertIn("雙方", out)          # 未自訂者用預設
+        self.assertNotIn("內部人員甲", out)  # owner 人名不得輸出
+        # 全部工項都沒 side → 不出現負責方欄
+        out2 = bd.render_html(project, [self._wi(1)])
+        self.assertNotIn("<th>負責方</th>", out2)
+
+    def test_timeline_dots_and_today_marker(self):
+        project = {"name": "x", "started": "2000-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2999-12-31"}],
+                   "dashboard": {"title": "t"}}
+        works = [self._wi(1, due="2000-06-01", status="done"),
+                 self._wi(2, due="2000-06-01"),               # 逾期未完成
+                 self._wi(3, due="2999-06-01")]
+        out = bd.render_html(project, works)
+        self.assertIn('class="dot dot-done"', out)
+        self.assertIn('class="dot dot-overdue"', out)
+        self.assertIn('class="dot dot-todo"', out)
+        self.assertIn('class="today"', out)
+        self.assertIn("legend", out)
+        # 起訖解析不出來 → 靜默省略 timeline，不整頁失敗
+        project2 = {"name": "x", "started": "??",
+                    "milestones": [{"id": "M1", "title": "m", "due": "2999-12-31"}],
+                    "dashboard": {"title": "t"}}
+        out2 = bd.render_html(project2, works)
+        self.assertNotIn('class="tl"', out2)
+
+    def test_upcoming_section_lists_overdue_first_excludes_done(self):
+        project = {"name": "x", "started": "2000-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2999-12-31"}],
+                   "dashboard": {"title": "t"}}
+        works = [self._wi(1, due="2000-01-05"),                 # 逾期
+                 self._wi(2, due="2000-01-02", status="done"),  # done 不列
+                 self._wi(3, due="2999-06-01")]                 # 14 天外不列
+        out = bd.render_html(project, works)
+        self.assertIn("近期截止", out)
+        section = out.split("近期截止")[1].split("</section>")[0]
+        self.assertIn("逾期", section)
+        self.assertNotIn("工項2", section)       # done 不列
+        self.assertNotIn("工項3", section)       # 14 天外不列
+        # 無符合項目 → 佔位文字
+        out2 = bd.render_html(project, [self._wi(3, due="2999-06-01")])
+        self.assertIn("未來兩週內沒有截止項目", out2)
 
 
 class TestCli(unittest.TestCase):

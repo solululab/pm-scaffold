@@ -97,6 +97,7 @@ id: WI-023
 title: PLP 篩選器接原生商品屬性
 status: blocked        # todo | doing | blocked | review | done | dropped
 owner: 小張
+side: vendor           # 負責方（選填）：vendor | client | both；上儀表板的是這個的 label，不是 owner
 blocked_on: client     # client | internal | vendor | WI-###（status=blocked 時必填）
 blocked_note: 客戶尚未提供色票對照表
 priority: mvp          # mvp | recommended | nice
@@ -162,7 +163,9 @@ type：standup｜client｜internal。frontmatter：`date / type / attendees:[]`�
 4. 進行中／最近完成（done 按 updated 取近 10 筆）兩欄
 5. 全部工項表：title / milestone / status，按 milestone 分組摺疊
 
-**白名單輸出（硬編碼）**：HTML 只包含 title、status、milestone（含 due）、工項 due（截止日，選填；逾期未完成標 overdue）、blocked_note（僅 `blocked_on: client`）、專案名與更新日。owner、estimate、people、內部 blocked 原因、spec_ref 一律不輸出。僅收錄 `client_visible: true` 的工項。
+**白名單輸出（硬編碼）**：HTML 只包含 title、status、milestone（含 due）、工項 due（截止日，選填；逾期未完成標 overdue）、side 對應的負責方 label（選填；label 由 `project.yaml` 的 `dashboard.side_labels.{vendor,client,both}` 設定，預設 開發方／客戶／雙方）、blocked_note（僅 `blocked_on: client`）、專案名與更新日。owner、estimate、people、內部 blocked 原因、spec_ref 一律不輸出。僅收錄 `client_visible: true` 的工項。
+
+儀表板另含兩個由 due 衍生的視覺區塊：各里程碑時間軸（工項依 due 落點、顏色依狀態、今天標線；解析不出日期就靜默省略）與「近期截止」（逾期＋14 天內到期的未完成工項，附剩餘／逾期天數）。
 
 ## 七、驗收標準
 
