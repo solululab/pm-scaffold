@@ -101,6 +101,7 @@ blocked_on: client     # client | internal | vendor | WI-###（status=blocked �
 blocked_note: 客戶尚未提供色票對照表
 priority: mvp          # mvp | recommended | nice
 milestone: M2
+due: 2026-09-05        # 截止日 YYYY-MM-DD（選填），會上儀表板；逾期未完成標示 overdue
 spec_ref: 規格書 §3.2   # 回指 source/ 內文件；無來源者填 "口頭需求" 並連結 decision/qa
 client_visible: true
 estimate: 3d
@@ -161,7 +162,7 @@ type：standup｜client｜internal。frontmatter：`date / type / attendees:[]`�
 4. 進行中／最近完成（done 按 updated 取近 10 筆）兩欄
 5. 全部工項表：title / milestone / status，按 milestone 分組摺疊
 
-**白名單輸出（硬編碼）**：HTML 只包含 title、status、milestone（含 due）、blocked_note（僅 `blocked_on: client`）、專案名與更新日。owner、estimate、people、內部 blocked 原因、spec_ref 一律不輸出。僅收錄 `client_visible: true` 的工項。
+**白名單輸出（硬編碼）**：HTML 只包含 title、status、milestone（含 due）、工項 due（截止日，選填；逾期未完成標 overdue）、blocked_note（僅 `blocked_on: client`）、專案名與更新日。owner、estimate、people、內部 blocked 原因、spec_ref 一律不輸出。僅收錄 `client_visible: true` 的工項。
 
 ## 七、驗收標準
 

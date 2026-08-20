@@ -7,6 +7,7 @@ blocked_on: ""         # status=blocked 時必填：client | internal | vendor |
 blocked_note: ""       # blocked_on=client 時必填，會顯示在客戶儀表板
 priority: mvp          # mvp | recommended | nice
 milestone: M1
+due: ""                # 截止日 YYYY-MM-DD（選填），會顯示在客戶儀表板；逾期未完成會標示
 spec_ref: 規格書 §x     # 回指 source/ 文件；無來源填「口頭需求」並連結 decision/qa
 client_visible: true   # 是否出現在客戶儀表板
 estimate: 1d

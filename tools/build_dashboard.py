@@ -289,6 +289,7 @@ def validate(project, data):
         _req(meta, "owner", path, errors)
         _req(meta, "spec_ref", path, errors)
         _date(meta, "updated", path, errors)
+        _date(meta, "due", path, errors, required=False)
         status = _req(meta, "status", path, errors)
         if status and status not in WORK_STATUS:
             errors.append("%s: status 值非法：%r（允許：%s）" % (path, status, "|".join(sorted(WORK_STATUS))))
@@ -374,6 +375,15 @@ def _visible(works):
             and w["meta"].get("status") != "dropped"]
 
 
+def _due_span(meta, today, prefix=""):
+    """工項截止日標籤；已過期且未完成者加 overdue 樣式。無 due 回傳空字串。"""
+    due = str(meta.get("due", "") or "").strip()
+    if not due:
+        return ""
+    cls = "due overdue" if due < today and meta.get("status") != "done" else "due"
+    return '<span class="%s">%s%s</span>' % (cls, prefix, _esc(due))
+
+
 def _bar(done, total):
     pct = int(round(done * 100.0 / total)) if total else 0
     return ('<div class="bar"><div class="fill" style="width:%d%%"></div></div>'
@@ -382,6 +392,7 @@ def _bar(done, total):
 
 def render_html(project, works):
     vis = _visible(works)
+    today = datetime.date.today().isoformat()
     dash = project.get("dashboard") or {}
     title = str(dash.get("title") or "").strip() or "%s 專案進度" % project.get("name", "")
     updated = max((w["meta"].get("updated", "") for w in vis), default="—")
@@ -413,8 +424,11 @@ def render_html(project, works):
     if waiting:
         parts.append("<ul>")
         for w in waiting:
-            parts.append("<li><strong>%s</strong>：%s</li>"
-                         % (_esc(w["meta"].get("title", "")), _esc(w["meta"].get("blocked_note", ""))))
+            due = _due_span(w["meta"], today, prefix="截止 ")
+            parts.append("<li><strong>%s</strong>%s：%s</li>"
+                         % (_esc(w["meta"].get("title", "")),
+                            " " + due if due else "",
+                            _esc(w["meta"].get("blocked_note", ""))))
         parts.append("</ul>")
     else:
         parts.append('<p class="empty">目前沒有待客戶提供的事項。</p>')
@@ -452,11 +466,12 @@ def render_html(project, works):
         if not mitems:
             continue
         parts.append("<details open><summary>%s %s（%d 項）</summary><table>"
-                     "<tr><th>項目</th><th>狀態</th></tr>" % (_esc(mid), _esc(m.get("title", "")), len(mitems)))
+                     "<tr><th>項目</th><th>狀態</th><th>截止</th></tr>" % (_esc(mid), _esc(m.get("title", "")), len(mitems)))
         for w in mitems:
             st = w["meta"].get("status", "")
-            parts.append('<tr><td>%s</td><td><span class="st st-%s">%s</span></td></tr>'
-                         % (_esc(w["meta"].get("title", "")), _esc(st), STATUS_LABEL.get(st, _esc(st))))
+            parts.append('<tr><td>%s</td><td><span class="st st-%s">%s</span></td><td>%s</td></tr>'
+                         % (_esc(w["meta"].get("title", "")), _esc(st), STATUS_LABEL.get(st, _esc(st)),
+                            _due_span(w["meta"], today) or '<span class="due">—</span>'))
         parts.append("</table></details>")
     parts.append("</section>")
 
@@ -477,6 +492,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 *{box-sizing:border-box}body{margin:0 auto;max-width:760px;padding:24px 16px 64px;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"PingFang TC","Noto Sans TC",sans-serif}
 h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.1rem;margin:32px 0 12px;border-bottom:1px solid var(--line);padding-bottom:6px}h3{font-size:1rem;margin:16px 0 4px}
 .meta,.due,.date{color:var(--muted);font-size:.85rem;font-weight:normal}
+.overdue{color:var(--warn);font-weight:600}
 .bar{background:var(--line);border-radius:6px;height:10px;overflow:hidden;display:inline-block;width:70%%;vertical-align:middle}
 .fill{background:var(--accent);height:100%%}.pct{margin-left:10px;font-size:.9rem;color:var(--muted)}
 .waiting{background:var(--card);border-left:4px solid var(--warn);padding:4px 16px 12px;border-radius:6px;margin-top:24px}

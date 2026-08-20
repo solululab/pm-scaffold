@@ -269,6 +269,22 @@ class TestValidate(unittest.TestCase):
                                      "decisions": [], "qa": [], "meetings": []})
         self.assertTrue(any("自身" in e for e in errs))
 
+    def test_work_due_optional_but_validated(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}]}
+        base = {"id": "WI-001", "title": "t", "owner": "o", "spec_ref": "s",
+                "updated": "2026-08-01", "status": "todo", "priority": "mvp",
+                "milestone": "M1", "client_visible": "true"}
+
+        def data(meta):
+            return {"work": [{"path": "a.md", "meta": meta, "body": ""}],
+                    "decisions": [], "qa": [], "meetings": []}
+
+        self.assertEqual(bd.validate(project, data(dict(base))), [])  # 無 due 合法
+        self.assertEqual(bd.validate(project, data(dict(base, due="2026-09-05"))), [])
+        errs = bd.validate(project, data(dict(base, due="9/5")))
+        self.assertTrue(any("due" in e and "日期格式" in e for e in errs))
+
 
 class TestRender(unittest.TestCase):
     @classmethod
@@ -314,6 +330,39 @@ class TestRender(unittest.TestCase):
         out = bd.render_html(project, [])
         self.assertIn("目前沒有進行中的項目", out)
         self.assertIn("尚無完成項目", out)
+
+    @staticmethod
+    def _wi(i, **kw):
+        meta = {"id": "WI-00%d" % i, "title": "工項%d" % i, "owner": "o", "spec_ref": "s",
+                "updated": "2026-08-01", "status": "todo", "priority": "mvp",
+                "milestone": "M1", "client_visible": "true"}
+        meta.update(kw)
+        return {"path": "a.md", "meta": meta, "body": ""}
+
+    def test_work_due_rendered_and_overdue_flagged(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}],
+                   "dashboard": {"title": "t"}}
+        works = [self._wi(1, due="2999-12-31"),                 # 未到期
+                 self._wi(2, due="2000-01-01"),                 # 逾期未完成 → overdue
+                 self._wi(3, due="2000-01-02", status="done"),  # 逾期但已完成 → 不標
+                 self._wi(4)]                                   # 無 due → —
+        out = bd.render_html(project, works)
+        self.assertIn("<th>截止</th>", out)
+        self.assertIn("2999-12-31", out)
+        self.assertIn('class="due overdue">2000-01-01', out)
+        self.assertIn('class="due">2000-01-02', out)
+        self.assertEqual(out.count('class="due overdue"'), 1)
+        self.assertIn("—", out)
+
+    def test_waiting_item_shows_due(self):
+        project = {"name": "x", "started": "2026-01-01",
+                   "milestones": [{"id": "M1", "title": "m", "due": "2026-02-01"}],
+                   "dashboard": {"title": "t"}}
+        works = [self._wi(1, status="blocked", blocked_on="client",
+                          blocked_note="待提供資料", due="2026-09-05")]
+        out = bd.render_html(project, works)
+        self.assertIn("截止 2026-09-05", out)
 
 
 class TestCli(unittest.TestCase):

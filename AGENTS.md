@@ -53,8 +53,9 @@
 
 ## 客戶儀表板白名單（背景知識）
 
-`docs/index.html` 只會包含：title、status、milestone、
-blocked_note（僅 blocked_on=client）、專案名與更新日。owner、estimate、
+`docs/index.html` 只會包含：title、status、milestone、due（工項截止日，
+選填；逾期未完成會標示）、blocked_note（僅 blocked_on=client）、
+專案名與更新日。owner、estimate、
 內部備註在產生器層就被排除——但你寫 blocked_note（client）時仍須意識到
 **它會被客戶看到**，措辭要對外得體。
 
