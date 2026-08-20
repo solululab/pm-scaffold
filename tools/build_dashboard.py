@@ -430,7 +430,8 @@ def _timeline(start, end, items, today):
         return ""
 
     def pct(d):
-        return max(0, min(100, int(round((d - s).days * 100.0 / span))))
+        # 夾在 1–99%，避免頭尾的點被容器邊緣裁掉
+        return max(1, min(99, int(round((d - s).days * 100.0 / span))))
 
     dots, lanes = [], {}
     for w in items:
