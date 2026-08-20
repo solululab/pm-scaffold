@@ -41,10 +41,16 @@ private repo 需 GitHub Pro / Team。Settings → Pages → main + `/docs`。
 
 ## AI 工具接線
 
-- **Claude Code**：內建（`.claude/skills/` symlink 已就緒；`CLAUDE.md` → `AGENTS.md`）。
-- **Codex / 其他支援 AGENTS.md 的工具**：自動讀 `AGENTS.md`，內含
-  「情境 → playbook」對照表。
-- **完全不支援 skill 的工具**：對 agent 說「照 `skills/<名稱>/SKILL.md` 跑」。
+使用者只需要講人話（「我來報進度」「客戶問…」）——路由到正確 playbook
+是 AI 的責任（規則在 `AGENTS.md` 的「路由紀律」），選不出來它會用人話反問，
+不會要你講檔名。各工具的自動載入入口都已鋪好：
+
+- **Claude Code**：`.claude/skills/` symlink + `CLAUDE.md` → `AGENTS.md`
+- **Codex**：原生讀 `AGENTS.md`
+- **Gemini CLI**：`GEMINI.md` → `AGENTS.md`
+- **Cursor**：`.cursor/rules/pm-scaffold.mdc`（alwaysApply）→ `AGENTS.md`
+- **GitHub Copilot**：`.github/copilot-instructions.md` → `AGENTS.md`
+- **其他工具**（最後手段）：對 agent 說「先讀 AGENTS.md 再開始」
 
 ## 資料模型
 

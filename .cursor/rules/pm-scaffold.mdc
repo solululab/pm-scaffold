@@ -1,0 +1,6 @@
+---
+description: pm-scaffold 專案管理 repo 的 AI 行為總則入口
+alwaysApply: true
+---
+
+本專案的 AI 行為總則在 `AGENTS.md`——開始任何工作前先完整閱讀並遵循它（含「情境 → Playbook 對照表」與路由紀律）。
