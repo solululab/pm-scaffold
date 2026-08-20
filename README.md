@@ -10,7 +10,14 @@
 
 ## 快速開始
 
-    git clone <本repo> my-project-pm && cd my-project-pm
+**方式一（推薦）**：GitHub 上按 **Use this template** 建新 repo（記得選 **Private**——
+專案 repo 會放客戶資料），clone 下來後：
+
+    python3 tools/test_build_dashboard.py  # 自我檢查（應全部通過）
+
+**方式二**（不經 GitHub template）：
+
+    git clone https://github.com/solululab/pm-scaffold my-project-pm && cd my-project-pm
     rm -rf .git && git init -b main        # 斷開 scaffold 歷史
     python3 tools/test_build_dashboard.py  # 自我檢查（應全部通過）
 
